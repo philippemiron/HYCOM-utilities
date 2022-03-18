@@ -1,9 +1,17 @@
 import numpy as np
-from hycom.info import read_field_names
+from hycom.info import read_field_names, coords_field_names
 
 NAN_TH = 2**99  # Nan threshold
 
-def subset_hycom_field(input_file: str, output_file:str, fields: list, layers=[]):
+def validate_fields(fields: list, all_fields: list):
+    for field in fields:
+        if field not in all_fields:
+            print(f'Warning, {field} not in the HYCOM file, removing from list.')
+            fields.remove(field)
+    return fields
+
+
+def subset_hycom_field(input_file: str, output_file:str, fields: list = None, layers=[]):
     """
     This function will create a new set of .a and .b files, with a subset number of fields and layers.
     input_file: str
@@ -29,13 +37,7 @@ def subset_hycom_field(input_file: str, output_file:str, fields: list, layers=[]
 
     # Validate that the field names requested are available in the hycom file
     all_fields = read_field_names(b_input_file)
-    if len(fields) == 0:
-        fields = all_fields
-        # print(F"Reading all the fields in the file: {fields}")
-    if not(np.all([field in all_fields for field in fields])):
-        print(F"Warning!!!!! Fields {[field for field in fields if not(field in all_fields)]} are not"
-              F" in the hycom file {input_file}, removing them from the list.")
-        fields = [field for field in fields if field in all_fields ]
+    fields = validate_fields(fields, all_fields) if fields else all_fields
 
     # Reading the header file (first 4 lines, just general info)
     b_file_lines = b_file.readlines()
@@ -74,7 +76,7 @@ def subset_hycom_field(input_file: str, output_file:str, fields: list, layers=[]
     a_output_file.close()
 
 
-def read_hycom_fields(file_name: str, fields: list, layers=[], replace_to_nan=True, verbose=False):
+def read_hycom_fields(file_name: str, fields: list = None, layers=[], replace_to_nan=True, verbose=False):
     """
     Reads hycom files (.a and .b) and returns the desired fields in a dictionary.
         file_name: str
@@ -96,13 +98,7 @@ def read_hycom_fields(file_name: str, fields: list, layers=[], replace_to_nan=Tr
 
     # Validate that the field names requested are available in the hycom file
     all_fields = read_field_names(b_file_name)
-    if len(fields) == 0:
-        fields = all_fields
-        # print(F"Reading all the fields in the file: {fields}")
-    if not(np.all([field in all_fields for field in fields])):
-        print(F"Warning!!!!! Fields {[field for field in fields if not(field in all_fields)]} are not"
-              F" in the hycom file {file_name}, removing them from the list.")
-        fields = [field for field in fields if field in all_fields ]
+    fields = validate_fields(fields, all_fields) if fields else all_fields
 
     # Reading the header file (first 4 lines, just general info)
     b_file_lines = b_file.readlines()
@@ -112,9 +108,7 @@ def read_hycom_fields(file_name: str, fields: list, layers=[], replace_to_nan=Tr
     lon_size = int(b_file_lines[7].strip().split()[0])
     lat_size = int(b_file_lines[8].strip().split()[0])
     layer_size = lon_size*lat_size
-    # size of each layer (it seems all the layers have the same size)
     npad = 4096-np.mod(layer_size, 4096)
-
 
     # Looking for the starting locations for each layer and each field
     field_loc = {field: [] for field in fields}
@@ -164,14 +158,14 @@ def read_hycom_fields(file_name: str, fields: list, layers=[], replace_to_nan=Tr
     return np_fields
 
 
-def read_hycom_coords(file_name: str, fields: list, replace_to_nan=True,  verbose=False):
+def read_hycom_coords(file_name: str, fields: list = None, replace_to_nan=True,  verbose=False):
     """
     The definition of the "regional.grid" files is defined in page 9 and 10 of the Hycom User's Guide
     Reads files latitude and longitude coordinates from the  'regional.grid' file
         file_name: str
             Complete path to the "regional.grid" file
         fields: list
-            List of strings with the fields names to read. If empty, the function reads all the fields
+            List of strings with the fields names to read. If None, the function reads all the fields
         replace_to_nan: boolean
             Indicates if the nan values should be replaced with numpy nan
         verbose: boolean
@@ -184,13 +178,16 @@ def read_hycom_coords(file_name: str, fields: list, replace_to_nan=True,  verbos
     b_file_name = file_name+'.b'
     b_file = open(b_file_name, 'r')
 
+    # Validate that the field names requested are available in the hycom file
+    all_fields = coords_field_names(b_file_name)
+    fields = validate_fields(fields, all_fields) if fields else all_fields
+
     # Read dimensions
     b_file_lines = b_file.readlines()
 
     lon_size = int(b_file_lines[0].strip().split()[0])
     lat_size = int(b_file_lines[1].strip().split()[0])
     layer_size = lat_size*lon_size
-    # size of each layer (it seems all the layers have the same size)
     npad = 4096-np.mod(layer_size, 4096)
 
     # Looking for the starting locations for each layer and each field
